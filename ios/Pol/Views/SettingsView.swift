@@ -113,6 +113,15 @@ struct SettingsView: View {
             }
             .frame(minHeight: 52)
             Divider()
+            Link(destination: URL(string: "https://t.me/polantenbot")!) {
+                HStack {
+                    Text("خرید و تمدید اشتراک")
+                    Spacer()
+                    Text("@polantenbot").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                }
+                .frame(minHeight: 52)
+            }
+            Divider()
             HStack {
                 Text("صدای تماس")
                 Spacer()

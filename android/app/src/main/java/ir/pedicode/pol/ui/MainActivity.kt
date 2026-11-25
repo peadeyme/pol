@@ -286,18 +286,10 @@ private fun Home() {
                 )
             }
             if (info == null) {
-                License.plans.forEach { plan ->
-                    Row(
-                        Modifier.fillMaxWidth().background(Field, RoundedCornerShape(12.dp)).padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(plan.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text(plan.note, fontSize = 12.sp, color = Muted)
-                        }
-                        Text(plan.price, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Accent)
-                    }
-                }
+                Text(
+                    "برای خرید یا تمدید، کد دستگاه را کپی کن و در ربات تلگرام @polantenbot بفرست. قیمت‌ها و پرداخت داخل ربات است.",
+                    fontSize = 13.sp, color = Text2, lineHeight = 20.sp,
+                )
             }
             // Device code: the customer sends this when buying.
             Row(
@@ -347,7 +339,7 @@ private fun Home() {
                     onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(License.BUY_URL))) },
                     modifier = Modifier.weight(1f).height(48.dp),
                     shape = RoundedCornerShape(12.dp),
-                ) { Text("خرید اشتراک", color = Accent) }
+                ) { Text(if (info == null) "خرید در تلگرام" else "تمدید در تلگرام", color = Accent) }
             }
         }
 

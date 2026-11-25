@@ -22,18 +22,11 @@ import java.util.concurrent.TimeUnit
  */
 object License {
     const val TRIAL_DAYS = 7
-    const val BUY_URL = "https://pedicode.ir"
+    /** Plans, prices and payment live in the Telegram bot, so they can change without an app update. */
+    const val BUY_URL = "https://t.me/polantenbot"
 
     private const val PUBLIC_KEY =
         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXbBu62fjl6xP3Bfr7ZTawNh+2pTnH3aoPpBcbZ8dYG10w6Q+06T/hoA08E+hsVWF7PxqR6RpjKO7bK0KBWNcRQ=="
-
-    data class Plan(val title: String, val price: String, val note: String)
-
-    val plans = listOf(
-        Plan("ماهانه", "۳۰۰٬۰۰۰ تومان", "۳۱ روز"),
-        Plan("شش‌ماهه", "۱٬۵۰۰٬۰۰۰ تومان", "۱۸۳ روز — ۱۷٪ ارزان‌تر"),
-        Plan("سالانه", "۲٬۵۰۰٬۰۰۰ تومان", "۳۶۶ روز — ۳۱٪ ارزان‌تر"),
-    )
 
     data class Info(val plan: String, val expiresAt: Long) {
         val daysLeft: Int

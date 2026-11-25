@@ -209,8 +209,11 @@ struct LicenseBanner: View {
             Image(systemName: "lock.fill").foregroundStyle(Theme.danger)
             VStack(alignment: .leading, spacing: 2) {
                 Text("اشتراک تمام شده").font(.system(size: 15, weight: .bold))
-                Text("پیامک و تماس تا تمدید اشتراک منتقل نمی‌شوند. روی گوشی اندروید، کد لایسنس را وارد کن.")
+                Text("پیامک و تماس تا تمدید اشتراک منتقل نمی‌شوند. اشتراک رو از ربات تلگرام بخر و کد لایسنس رو در اپ اندروید وارد کن.")
                     .font(.system(size: 13)).foregroundStyle(Theme.text2)
+                Link("خرید از @polantenbot", destination: URL(string: "https://t.me/polantenbot")!)
+                    .font(.system(size: 14, weight: .bold))
+                    .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

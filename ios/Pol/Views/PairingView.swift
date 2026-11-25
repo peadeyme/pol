@@ -18,7 +18,8 @@ struct PairingView: View {
                     }
 
                     if bridge.state == .denied {
-                        Label("کد اشتباه بود. دوباره امتحان کن.", systemImage: "exclamationmark.triangle.fill")
+                        Label(bridge.deniedCode.map { "گوشی اندروید کد «\($0)» رو دریافت کرد و قبول نکرد. کد روی اندروید رو دوباره چک کن." } ?? "کد اشتباه بود. دوباره امتحان کن.",
+                              systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(Theme.danger)
                     }
 

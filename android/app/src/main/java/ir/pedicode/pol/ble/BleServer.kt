@@ -126,6 +126,15 @@ class BleServer(
         }
     }
 
+    private val prepared = java.io.ByteArrayOutputStream()
+
+    private fun deliver(device: BluetoothDevice, packet: ByteArray) {
+        main.post {
+            val message = reassembler.push(packet) ?: return@post
+            listener.onMessage(device, message)
+        }
+    }
+
     // ---- advertising ----
 
     private val advertiseCallback = object : AdvertiseCallback() {
@@ -199,14 +208,31 @@ class BleServer(
             device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray,
         ) {
+            if (preparedWrite) {
+                // Long write: pieces arrive with offsets and are committed in onExecuteWrite.
+                // The response must echo offset and value, or iOS aborts the write.
+                synchronized(prepared) {
+                    if (offset == 0) prepared.reset()
+                    prepared.write(value)
+                }
+                if (responseNeeded) server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                return
+            }
             if (responseNeeded) {
                 server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
             }
             if (characteristic.uuid != Protocol.RX) return
-            main.post {
-                val message = reassembler.push(value) ?: return@post
-                listener.onMessage(device, message)
+            deliver(device, value)
+        }
+
+        override fun onExecuteWrite(device: BluetoothDevice, requestId: Int, execute: Boolean) {
+            val value = synchronized(prepared) {
+                val v = prepared.toByteArray()
+                prepared.reset()
+                v
             }
+            server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+            if (execute && value.isNotEmpty()) deliver(device, value)
         }
 
         override fun onDescriptorWriteRequest(

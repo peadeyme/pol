@@ -22,6 +22,8 @@ final class BridgeManager: NSObject, ObservableObject {
 
     @Published private(set) var state: LinkState = .off
     @Published private(set) var found: [Found] = []
+    /// Code the Android app received on the last refused attempt (for the error message).
+    @Published private(set) var deniedCode: String?
 
     /// Called on the main queue for every complete JSON message.
     var onMessage: (([String: Any]) -> Void)?
@@ -101,7 +103,8 @@ final class BridgeManager: NSObject, ObservableObject {
         guard state == .connected || object["t"] as? String == "hello" else { return }
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let p = peripheral else { return }
-        let max = p.maximumWriteValueLength(for: .withResponse)
+        // Packets sized to the link (MTU - 3) so no packet needs a slow "long write".
+        let max = p.maximumWriteValueLength(for: .withoutResponse)
         outbox.append(contentsOf: Wire.split(data, maxPacket: max))
         pump()
     }
@@ -138,6 +141,7 @@ final class BridgeManager: NSObject, ObservableObject {
             pendingCode = nil
             state = .connected
         case "denied":
+            deniedCode = obj["got"] as? String
             state = .denied
             pendingCode = nil
             if let p = peripheral { central.cancelPeripheralConnection(p) }
@@ -224,6 +228,11 @@ extension BridgeManager: CBPeripheralDelegate {
 
     func peripheral(_ p: CBPeripheral, didWriteValueFor c: CBCharacteristic, error: Error?) {
         writing = false
+        if error != nil {
+            // A packet was lost; the rest of that message is useless. Drop it and move on.
+            outbox.removeAll()
+            return
+        }
         pump()
     }
 }

@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -63,6 +64,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ir.pedicode.pol.BridgeService
 import ir.pedicode.pol.BridgeState
@@ -168,6 +172,21 @@ private fun Home() {
         granted = countGranted(context)
         batteryOk = ignoresBattery(context)
     }
+    // Re-check permissions whenever the user comes back from Settings.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                granted = countGranted(context)
+                batteryOk = ignoresBattery(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // Shows the switch flipped right away while the service starts or stops.
+    var wanted by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(status.running) { wanted = null }
     val allGranted = granted == PERMISSIONS.size
 
     Column(
@@ -204,9 +223,10 @@ private fun Home() {
                     Text("از طریق بلوتوث", fontSize = 13.sp, color = Muted)
                 }
                 Switch(
-                    checked = status.running,
+                    checked = wanted ?: status.running,
                     enabled = allGranted,
                     onCheckedChange = { on ->
+                        wanted = on
                         if (on) BridgeService.start(context) else BridgeService.stop(context)
                     },
                     colors = SwitchDefaults.colors(checkedTrackColor = Accent, checkedThumbColor = AccentDark),
@@ -222,6 +242,12 @@ private fun Home() {
                 fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Accent,
                 letterSpacing = 4.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
             )
+            status.lastRejected?.let {
+                Text(
+                    "یک آیفون با کد «$it» تلاش کرد و رد شد. کد بالا را دقیق وارد کنید.",
+                    fontSize = 13.sp, color = Color(0xFFF87171), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
+                )
+            }
             Text(
                 "این کد را یک بار در اپ آیفون وارد کنید.",
                 fontSize = 13.sp, color = Text2, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,

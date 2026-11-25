@@ -38,6 +38,8 @@ data class BridgeStatus(
     val bluetoothOff: Boolean = false,
     val connected: Boolean = false,
     val iphoneName: String? = null,
+    /** Code from the last refused pairing attempt, shown in the app to help the user. */
+    val lastRejected: String? = null,
 )
 
 object BridgeState {
@@ -141,15 +143,23 @@ class BridgeService : Service(), BleServer.Listener {
 
         if (type == "hello") {
             val id = msg.optString("id")
-            val code = msg.optString("code")
-            val ok = id.isNotEmpty() && (id in prefs.trustedPhones || code == prefs.pairingCode)
-            if (!ok) {
-                ble.send(JSONObject().put("t", "denied").toString())
+            val code = digitsOnly(msg.optString("code"))
+            val expected = prefs.pairingCode
+            val reason = when {
+                id.isEmpty() -> "no_id"
+                id in prefs.trustedPhones -> null
+                code.isEmpty() -> "no_code"
+                code != expected -> "bad_code"
+                else -> null
+            }
+            if (reason != null) {
+                BridgeState.update { it.copy(lastRejected = if (code.isEmpty()) "(بدون کد)" else code) }
+                ble.send(JSONObject().put("t", "denied").put("reason", reason).put("got", code).toString())
                 return
             }
             prefs.trust(id)
             authorized.add(device.address)
-            BridgeState.update { it.copy(connected = true, iphoneName = msg.optString("name").ifEmpty { "iPhone" }) }
+            BridgeState.update { it.copy(lastRejected = null, connected = true, iphoneName = msg.optString("name").ifEmpty { "iPhone" }) }
             sendWelcome()
             if (License.isActive(this, prefs)) sendFullSync()
             return
@@ -170,6 +180,14 @@ class BridgeService : Service(), BleServer.Listener {
             "dial" -> control.dial(msg.optString("to"), msg.optInt("sim", 1))
             "sync" -> sendFullSync()
             "ping" -> sendStatus()
+        }
+    }
+
+    /** Accepts Persian/Arabic digits and stray spaces. */
+    private fun digitsOnly(s: String): String = buildString {
+        for (c in s) {
+            val d = Character.digit(c, 10)
+            if (d >= 0) append(d)
         }
     }
 

@@ -119,17 +119,18 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.VERSION }}
-          name: پل ${{ env.VERSION }}
-          target_commitish: ${{ github.sha }}
-          make_latest: true
-          body: |
-            **Pol.apk** — نصب روی گوشی اندروید (Android 10 به بالا)
-            **Pol.ipa** — نصب روی آیفون با SideStore (iOS 17 به بالا)
-
-            خرید و تمدید اشتراک: https://t.me/polantenbot
-          files: |
-            Pol.apk
-            Pol.ipa
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s\n' \
+            "**Pol.apk** — نصب روی گوشی اندروید (Android 10 به بالا)" \
+            "**Pol.ipa** — نصب روی آیفون با SideStore (iOS 17 به بالا)" \
+            "" \
+            "خرید و تمدید اشتراک: https://t.me/polantenbot" > notes.md
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" Pol.apk Pol.ipa --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "v$VERSION" Pol.apk Pol.ipa --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "پل $VERSION" --notes-file notes.md --latest
+          fi

@@ -191,6 +191,14 @@ class BridgeService : Service(), BleServer.Listener {
         }
     }
 
+    /** The name the user gave the phone (e.g. "POCO C71"), not the model code. */
+    private fun deviceName(): String =
+        runCatching { android.provider.Settings.Global.getString(contentResolver, "device_name") }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: runCatching { android.provider.Settings.Secure.getString(contentResolver, "bluetooth_name") }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+            ?: "${Build.MANUFACTURER} ${Build.MODEL}"
+
     /** Accepts Persian/Arabic digits and stray spaces. */
     private fun digitsOnly(s: String): String = buildString {
         for (c in s) {
@@ -203,7 +211,7 @@ class BridgeService : Service(), BleServer.Listener {
         ble.send(
             JSONObject()
                 .put("t", "welcome")
-                .put("device", Build.MODEL)
+                .put("device", deviceName())
                 .put("sims", data.sims())
                 .put("battery", data.battery())
                 .put("trialDays", License.trialDaysLeft(prefs.firstRun))
@@ -223,10 +231,10 @@ class BridgeService : Service(), BleServer.Listener {
     private fun sendFullSync() {
         // Each block is its own message so the iPhone can show data as it arrives.
         Thread {
-            val contacts = data.contacts()
-            ble.send(JSONObject().put("t", "contacts").put("items", contacts).toString())
-            ble.send(JSONObject().put("t", "sms_sync").put("items", data.recentSms()).toString())
-            ble.send(JSONObject().put("t", "calls").put("items", data.callLog()).toString())
+            // Each part on its own, so one failure doesn't stop the others or crash the app.
+            runCatching { ble.send(JSONObject().put("t", "contacts").put("items", data.contacts()).toString()) }
+            runCatching { ble.send(JSONObject().put("t", "sms_sync").put("items", data.recentSms()).toString()) }
+            runCatching { ble.send(JSONObject().put("t", "calls").put("items", data.callLog()).toString()) }
         }.start()
     }
 
@@ -305,7 +313,7 @@ class BridgeService : Service(), BleServer.Listener {
                 callId = null
                 // Refresh the call log shortly after the call is written.
                 main.postDelayed({
-                    Thread { ble.send(JSONObject().put("t", "calls").put("items", data.callLog()).toString()) }.start()
+                    Thread { runCatching { ble.send(JSONObject().put("t", "calls").put("items", data.callLog()).toString()) } }.start()
                 }, 1500)
             }
         }

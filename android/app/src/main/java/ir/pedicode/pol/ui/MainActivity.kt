@@ -238,8 +238,9 @@ private fun Home() {
         // Pairing code
         Section {
             Text("کد جفت‌سازی", fontSize = 14.sp, color = Muted)
+            // Digits must be shown left-to-right, or "327 291" appears as "291 327" in RTL.
             Text(
-                code.chunked(3).joinToString("  "),
+                "\u2066" + code.chunked(3).joinToString("  ") + "\u2069",
                 fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Accent,
                 letterSpacing = 4.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
             )

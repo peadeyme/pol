@@ -110,13 +110,21 @@ class BleServer(
         val packet = outbox.pollFirst() ?: return
         val s = server ?: return
         sending = true
-        val ok = if (Build.VERSION.SDK_INT >= 33) {
-            s.notifyCharacteristicChanged(device, tx, false, packet) == BluetoothGatt.GATT_SUCCESS
-        } else {
-            @Suppress("DEPRECATION")
-            tx.value = packet
-            @Suppress("DEPRECATION")
-            s.notifyCharacteristicChanged(device, tx, false)
+        val ok = try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                s.notifyCharacteristicChanged(device, tx, false, packet) == BluetoothGatt.GATT_SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                tx.value = packet
+                @Suppress("DEPRECATION")
+                s.notifyCharacteristicChanged(device, tx, false)
+            }
+        } catch (e: Exception) {
+            // Never let one bad packet take the whole app down.
+            Log.w(TAG, "notify failed", e)
+            outbox.clear()
+            sending = false
+            return
         }
         if (!ok) {
             // Stack is busy: put it back and retry shortly.

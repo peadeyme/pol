@@ -23,8 +23,9 @@ object Protocol {
 
     fun split(message: String, mtu: Int): List<ByteArray> {
         val data = message.toByteArray(Charsets.UTF_8)
-        // ATT header takes 3 bytes, our flag byte takes 1.
-        val chunk = (mtu - 4).coerceAtLeast(16)
+        // ATT header takes 3 bytes, our flag byte takes 1, and an attribute value
+        // can never exceed 512 bytes (Android throws above that, even with a big MTU).
+        val chunk = (minOf(mtu - 3, 512) - 1).coerceAtLeast(16)
         val packets = ArrayList<ByteArray>()
         var offset = 0
         do {

@@ -1,0 +1,20 @@
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/release.jks
+*.keystore
+*.jks
+
+# iOS
+ios/Pol.xcodeproj/
+ios/build/
+*.ipa
+xcuserdata/
+DerivedData/
+
+.DS_Store
+.idea/
+tools/__pycache__/
+*.pem

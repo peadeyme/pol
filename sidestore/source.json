@@ -1,0 +1,35 @@
+{
+  "name": "PEDICODE",
+  "identifier": "ir.pedicode.source",
+  "subtitle": "from PEDICODE",
+  "website": "https://pedicode.ir",
+  "tintColor": "#34D399",
+  "apps": [
+    {
+      "name": "پل",
+      "bundleIdentifier": "ir.pedicode.pol",
+      "developerName": "PEDICODE",
+      "subtitle": "تماس و پیامک گوشی اندروید روی آیفون",
+      "localizedDescription": "پل گوشی اندروید را با بلوتوث به آیفون وصل می‌کند تا پیامک‌ها، تماس‌ها و مخاطبین آن روی آیفون نمایش داده شوند.",
+      "iconURL": "https://raw.githubusercontent.com/peadeyme/pol/main/sidestore/icon.png",
+      "tintColor": "#34D399",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "date": "2026-11-25",
+          "localizedDescription": "نسخه‌ی اول: پیامک، اعلان تماس، مخاطبین، تاریخچه‌ی تماس.",
+          "downloadURL": "https://github.com/peadeyme/pol/releases/latest/download/Pol.ipa",
+          "minOSVersion": "17.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSBluetoothAlwaysUsageDescription": "اتصال به گوشی اندروید",
+          "NSContactsUsageDescription": "ذخیره‌ی مخاطبین در آیفون (اختیاری)"
+        }
+      }
+    }
+  ],
+  "news": []
+}

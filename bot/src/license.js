@@ -1,10 +1,11 @@
 // Pol license codes: base64url(payload) + "." + base64url(DER ECDSA-P256-SHA256 signature).
 // Must match android/.../data/License.kt and tools/license.py.
 
+/** Default plans; the admin can change them from the bot (stored in KV under config:plans). */
 export const PLANS = {
-  m: { title: "ماهانه", days: 31, price: 300000 },
-  s: { title: "شش‌ماهه", days: 183, price: 1500000 },
-  y: { title: "سالانه", days: 366, price: 2500000 },
+  m: { title: "ماهانه", days: 31, price: 300000, active: true },
+  s: { title: "شش‌ماهه", days: 183, price: 1500000, active: true },
+  y: { title: "سالانه", days: 366, price: 2500000, active: true },
 };
 
 export const DEVICE_RE = /^[0-9A-F]{5}-[0-9A-F]{5}$/;
@@ -58,12 +59,11 @@ async function importKey(keyB64) {
   return cachedKey;
 }
 
-/** Returns { code, expires } for a device and plan; `from` extends an existing license. */
-export async function issueLicense(keyB64, device, plan, from = 0) {
-  const p = PLANS[plan];
-  if (!p) throw new Error("unknown plan");
+/** Returns { code, expires } for a device; `days` is the plan length, `from` extends an existing license. */
+export async function issueLicense(keyB64, device, plan, days, from = 0) {
+  if (!days) throw new Error("missing days");
   const now = Math.floor(Date.now() / 1000);
-  const expires = Math.max(now, from) + p.days * 86400;
+  const expires = Math.max(now, from) + days * 86400;
   const payload = new TextEncoder().encode(JSON.stringify({ d: device, p: plan, e: expires }));
   const key = await importKey(keyB64);
   const raw = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, payload));

@@ -62,7 +62,8 @@ final class Store: ObservableObject {
         case "y": return "سالانه · \(Fa.num(licenseDays)) روز مانده"
         case "s": return "شش‌ماهه · \(Fa.num(licenseDays)) روز مانده"
         case "m": return "ماهانه · \(Fa.num(licenseDays)) روز مانده"
-        default: return licenseActive ? "آزمایشی · \(Fa.num(licenseDays)) روز مانده" : "غیرفعال"
+        case "trial": return licenseActive ? "آزمایشی · \(Fa.num(licenseDays)) روز مانده" : "غیرفعال"
+        default: return licenseActive ? "اشتراک · \(Fa.num(licenseDays)) روز مانده" : "غیرفعال"
         }
     }
 

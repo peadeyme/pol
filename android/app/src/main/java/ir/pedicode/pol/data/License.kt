@@ -38,7 +38,7 @@ object License {
     data class Info(val plan: String, val expiresAt: Long) {
         val daysLeft: Int
             get() = TimeUnit.SECONDS.toDays(expiresAt - System.currentTimeMillis() / 1000).toInt().coerceAtLeast(0)
-        val planName: String get() = when (plan) { "y" -> "سالانه"; "s" -> "شش‌ماهه"; else -> "ماهانه" }
+        val planName: String get() = when (plan) { "y" -> "سالانه"; "s" -> "شش‌ماهه"; "m" -> "ماهانه"; else -> "اشتراک" }
     }
 
     /** Short code the customer sends to the seller, e.g. "7F3A2-9C41B". Stable for this app on this phone. */

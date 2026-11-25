@@ -1,14 +1,19 @@
 // Pol sales bot — Cloudflare Worker + Telegram.
 //
-// Flow: /start → choose plan → send device code → card-to-card → send receipt photo
+// Customers: /start → choose plan → send device code → card-to-card → send receipt photo
 // → receipt goes to the admin group with Approve / Reject → on approve the bot signs
 // a license code and sends it to the customer.
+// Owner (whoever ran /setgroup): /start opens the admin panel (admin.js).
 //
 // Secrets: BOT_TOKEN, LICENSE_KEY, WEBHOOK_SECRET, CARD_NUMBER, CARD_HOLDER
 // Vars (wrangler.toml): SUPPORT
 // KV binding: DB
 
-import { DEVICE_RE, PLANS, issueLicense, normalizeDevice } from "./license.js";
+import { adminHome, onAdminCallback, onAdminText } from "./admin.js";
+import { DEVICE_RE, issueLicense, normalizeDevice } from "./license.js";
+import {
+  adminGroup, cardInfo, esc, fa, faDate, getJSON, getPlans, isAdmin, listAll, putJSON, send, tg, toman, userLink,
+} from "./util.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -29,7 +34,7 @@ export default {
       const hook = await tg(env, "setWebhook", {
         url: `${url.origin}/webhook`,
         secret_token: env.WEBHOOK_SECRET,
-        allowed_updates: ["message", "callback_query", "my_chat_member"],
+        allowed_updates: ["message", "callback_query"],
       });
       await tg(env, "setMyCommands", {
         commands: [
@@ -50,51 +55,15 @@ export default {
   },
 };
 
-// ---------- Telegram helpers ----------
-
-async function tg(env, method, body) {
-  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!data.ok) console.error(method, data.description);
-  return data;
-}
-
-const send = (env, chat_id, text, extra = {}) =>
-  tg(env, "sendMessage", { chat_id, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
-
-const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const fa = (n) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[d]);
-const toman = (n) => fa(n.toLocaleString("en-US").replace(/,/g, "٬")) + " تومان";
-const faDate = (sec) => {
-  try {
-    return new Date(sec * 1000).toLocaleDateString("fa-IR", { year: "numeric", month: "long", day: "numeric" });
-  } catch {
-    return new Date(sec * 1000).toISOString().slice(0, 10);
-  }
-};
-
-const who = (u) => `${esc([u.first_name, u.last_name].filter(Boolean).join(" "))}${u.username ? " (@" + esc(u.username) + ")" : ""} — <code>${u.id}</code>`;
-
-// ---------- Storage ----------
-
-const getJSON = async (env, key) => JSON.parse((await env.DB.get(key)) || "null");
-const putJSON = (env, key, value) => env.DB.put(key, JSON.stringify(value));
-
-async function adminGroup(env) {
-  return (await env.DB.get("config:group")) || null;
-}
-
 // ---------- Keyboards ----------
 
-function plansKeyboard() {
+async function plansKeyboard(env) {
+  const plans = await getPlans(env);
   return {
     inline_keyboard: [
-      ...Object.entries(PLANS).map(([id, p]) => [{ text: `${p.title} — ${toman(p.price)}`, callback_data: `plan:${id}` }]),
+      ...Object.entries(plans)
+        .filter(([, p]) => p.active)
+        .map(([id, p]) => [{ text: `${p.title} — ${toman(p.price)}`, callback_data: `plan:${id}` }]),
       [{ text: "اشتراک‌های من", callback_data: "mine" }, { text: "راهنما", callback_data: "help" }],
     ],
   };
@@ -107,6 +76,8 @@ const WELCOME =
   "اینجا می‌تونی اشتراک <b>پل</b> رو بخری یا تمدید کنی.\n" +
   "پل تماس و پیامک گوشی اندرویدت رو روی آیفون میاره.\n\n" +
   "یک پلن انتخاب کن:";
+
+const showWelcome = async (env, chatId) => send(env, chatId, WELCOME, { reply_markup: await plansKeyboard(env) });
 
 function helpText(env) {
   return (
@@ -133,32 +104,43 @@ async function handleUpdate(update, env) {
   const user = msg.from;
   const key = `user:${user.id}`;
   let state = await getJSON(env, key);
-  const isNew = !state;
-  if (isNew) {
-    state = { id: user.id, name: [user.first_name, user.last_name].filter(Boolean).join(" "), username: user.username || null, joined: Date.now(), step: null };
+  const admin = await isAdmin(env, user.id);
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ");
+
+  if (!state) {
+    state = { id: user.id, name: fullName, username: user.username || null, joined: Date.now(), step: null };
     await putJSON(env, key, state);
     const group = await adminGroup(env);
-    if (group) await send(env, group, `👤 <b>کاربر جدید</b>\n${who(user)}`);
+    if (group && !admin) await send(env, group, `👤 <b>کاربر جدید</b>\n${userLink(state)}`);
+  } else if (state.username !== (user.username || null) || state.name !== fullName) {
+    // Keep name/username fresh for the admin's user list.
+    state.username = user.username || null;
+    state.name = fullName;
+    if (!state.joined) state.joined = Date.now();
+    await putJSON(env, key, state);
   }
 
   const text = (msg.text || "").trim();
 
+  if (admin) {
+    if (text.startsWith("/start") || text.startsWith("/admin")) return adminHome(env, user.id);
+    if ((state.step || "").startsWith("adm:")) return onAdminText(env, msg, state);
+  }
+
   if (text.startsWith("/start")) {
     state.step = null;
     await putJSON(env, key, state);
-    return send(env, user.id, WELCOME, { reply_markup: plansKeyboard() });
+    return showWelcome(env, user.id);
   }
   if (text.startsWith("/help")) return send(env, user.id, helpText(env));
   if (text.startsWith("/mylicense")) return showMine(env, user.id);
 
   if (state.step === "device" && text) return onDeviceCode(env, user, state, text);
-
   if (state.step === "receipt" && (msg.photo || msg.document)) return onReceipt(env, msg, state);
-
   if (state.step === "receipt") {
     return send(env, user.id, "لطفاً <b>عکس رسید</b> واریز رو بفرست.", { reply_markup: cancelKeyboard });
   }
-  return send(env, user.id, WELCOME, { reply_markup: plansKeyboard() });
+  return admin ? adminHome(env, user.id) : showWelcome(env, user.id);
 }
 
 async function onDeviceCode(env, user, state, text) {
@@ -169,10 +151,19 @@ async function onDeviceCode(env, user, state, text) {
       "در اپ پل روی گوشی اندروید، بخش «اشتراک» پیداش می‌کنی.",
       { reply_markup: cancelKeyboard });
   }
-  const plan = PLANS[state.plan];
+  const plans = await getPlans(env);
+  const plan = plans[state.plan];
+  if (!plan || !plan.active) {
+    state.step = null;
+    await putJSON(env, `user:${user.id}`, state);
+    return send(env, user.id, "این پلن دیگه موجود نیست. دوباره انتخاب کن:", { reply_markup: await plansKeyboard(env) });
+  }
+  const card = await cardInfo(env);
   const orderId = crypto.randomUUID().slice(0, 8);
+  // Price and length are frozen on the order, so later plan edits don't change it.
   await putJSON(env, `order:${orderId}`, {
-    id: orderId, userId: user.id, plan: state.plan, device, amount: plan.price, status: "waiting_receipt", created: Date.now(),
+    id: orderId, userId: user.id, plan: state.plan, title: plan.title, days: plan.days, device,
+    amount: plan.price, status: "waiting_receipt", created: Date.now(),
   });
   state.step = "receipt";
   state.device = device;
@@ -180,11 +171,11 @@ async function onDeviceCode(env, user, state, text) {
   await putJSON(env, `user:${user.id}`, state);
 
   return send(env, user.id,
-    `پلن: <b>${plan.title}</b>\n` +
+    `پلن: <b>${esc(plan.title)}</b>\n` +
     `کد دستگاه: <code>${device}</code>\n\n` +
     `مبلغ <b>${toman(plan.price)}</b> رو به این کارت واریز کن:\n\n` +
-    `<code>${esc(env.CARD_NUMBER)}</code>\n` +
-    `به نام: ${esc(env.CARD_HOLDER)}\n\n` +
+    `<code>${esc(card.number)}</code>\n` +
+    `به نام: ${esc(card.holder)}\n\n` +
     "بعد <b>عکس رسید</b> رو همینجا بفرست.",
     { reply_markup: cancelKeyboard });
 }
@@ -202,11 +193,10 @@ async function onReceipt(env, msg, state) {
     return send(env, user.id, "سیستم تأیید موقتاً در دسترس نیست. چند دقیقه دیگه دوباره رسید رو بفرست.");
   }
 
-  const plan = PLANS[order.plan];
   const caption =
     `🧾 <b>رسید جدید</b> — سفارش <code>${order.id}</code>\n` +
-    `${who(user)}\n` +
-    `پلن: ${plan.title} — ${toman(plan.price)}\n` +
+    `${userLink(state)}\n` +
+    `پلن: ${esc(order.title)} — ${toman(order.amount)}\n` +
     `کد دستگاه: <code>${order.device}</code>`;
   const buttons = {
     inline_keyboard: [[
@@ -232,11 +222,17 @@ async function onCallback(q, env) {
   const chatId = q.message?.chat?.id;
   const answer = (text) => tg(env, "answerCallbackQuery", { callback_query_id: q.id, text });
 
-  // Admin decisions: only inside the admin group.
+  // Decisions on receipts: only inside the admin group.
   if (data.startsWith("ok:") || data.startsWith("no:")) {
     const group = await adminGroup(env);
     if (String(chatId) !== String(group)) return answer("اجازه نداری");
     return decide(env, q, data.slice(0, 2) === "ok", data.slice(3));
+  }
+
+  // Admin panel.
+  if (data.startsWith("a:")) {
+    if (!(await isAdmin(env, q.from.id))) return answer("اجازه نداری");
+    return onAdminCallback(env, q, data, (id) => showWelcome(env, id));
   }
 
   const user = q.from;
@@ -245,13 +241,15 @@ async function onCallback(q, env) {
   await answer();
 
   if (data.startsWith("plan:")) {
-    const plan = data.slice(5);
-    if (!PLANS[plan]) return;
+    const pid = data.slice(5);
+    const plans = await getPlans(env);
+    const plan = plans[pid];
+    if (!plan || !plan.active) return send(env, user.id, "این پلن دیگه موجود نیست.", { reply_markup: await plansKeyboard(env) });
     state.step = "device";
-    state.plan = plan;
+    state.plan = pid;
     await putJSON(env, key, state);
     return send(env, user.id,
-      `پلن <b>${PLANS[plan].title}</b> — ${toman(PLANS[plan].price)}\n\n` +
+      `پلن <b>${esc(plan.title)}</b> — ${toman(plan.price)}\n\n` +
       "حالا <b>کد دستگاه</b> رو بفرست.\n" +
       "در اپ پل روی گوشی اندروید ← بخش «اشتراک» ← روی کد دستگاه بزن تا کپی بشه.\n" +
       "مثال: <code>7F3A2-9C41B</code>",
@@ -260,7 +258,7 @@ async function onCallback(q, env) {
   if (data === "cancel") {
     state.step = null;
     await putJSON(env, key, state);
-    return send(env, user.id, "لغو شد.", { reply_markup: plansKeyboard() });
+    return send(env, user.id, "لغو شد.", { reply_markup: await plansKeyboard(env) });
   }
   if (data === "mine") return showMine(env, user.id);
   if (data === "help") return send(env, user.id, helpText(env));
@@ -277,6 +275,7 @@ async function decide(env, q, approve, orderId) {
 
   if (!approve) {
     order.status = "rejected";
+    order.decidedBy = admin;
     await putJSON(env, `order:${orderId}`, order);
     await tg(env, "editMessageCaption", {
       chat_id: q.message.chat.id, message_id: q.message.message_id,
@@ -285,7 +284,7 @@ async function decide(env, q, approve, orderId) {
     await send(env, order.userId,
       "رسید تأیید نشد ❌\nاگه فکر می‌کنی اشتباه شده، با پشتیبانی در ارتباط باش" +
       (env.SUPPORT ? `: ${esc(env.SUPPORT)}` : "."),
-      { reply_markup: plansKeyboard() });
+      { reply_markup: await plansKeyboard(env) });
     return answer();
   }
 
@@ -293,16 +292,18 @@ async function decide(env, q, approve, orderId) {
   const licKey = `lic:${order.userId}:${order.device}`;
   const existing = await getJSON(env, licKey);
   const from = existing && existing.expires > Date.now() / 1000 ? existing.expires : 0;
-  const { code, expires } = await issueLicense(env.LICENSE_KEY, order.device, order.plan, from);
+  const days = order.days || (await getPlans(env))[order.plan]?.days || 31;
+  const { code, expires } = await issueLicense(env.LICENSE_KEY, order.device, order.plan, days, from);
 
   order.status = "approved";
-  order.approvedBy = admin;
+  order.decidedBy = admin;
+  order.approvedAt = Date.now();
   await putJSON(env, `order:${orderId}`, order);
-  await putJSON(env, licKey, { userId: order.userId, device: order.device, plan: order.plan, expires, code, reminded: [] });
+  await putJSON(env, licKey, { userId: order.userId, device: order.device, plan: order.plan, title: order.title, expires, code, reminded: [] });
 
   await send(env, order.userId,
     `پرداختت تأیید شد ✅\n\n` +
-    `پلن: <b>${PLANS[order.plan].title}</b>\n` +
+    `پلن: <b>${esc(order.title || "")}</b>\n` +
     `معتبر تا: <b>${faDate(expires)}</b>\n\n` +
     "کد لایسنس (روش بزن تا کپی بشه):\n" +
     `<code>${code}</code>\n\n` +
@@ -315,19 +316,19 @@ async function decide(env, q, approve, orderId) {
 }
 
 async function showMine(env, userId) {
-  const list = await env.DB.list({ prefix: `lic:${userId}:` });
-  if (!list.keys.length) {
-    return send(env, userId, "هنوز اشتراکی نداری.", { reply_markup: plansKeyboard() });
+  const keys = await listAll(env, `lic:${userId}:`);
+  if (!keys.length) {
+    return send(env, userId, "هنوز اشتراکی نداری.", { reply_markup: await plansKeyboard(env) });
   }
   const now = Date.now() / 1000;
   const lines = [];
-  for (const k of list.keys) {
-    const lic = await getJSON(env, k.name);
+  for (const k of keys) {
+    const lic = await getJSON(env, k);
     if (!lic) continue;
     const status = lic.expires > now ? `فعال تا ${faDate(lic.expires)}` : "منقضی شده";
-    lines.push(`• <code>${lic.device}</code> — ${PLANS[lic.plan]?.title ?? ""} — ${status}\n<code>${lic.code}</code>`);
+    lines.push(`• <code>${lic.device}</code> — ${esc(lic.title || "")} — ${status}\n<code>${lic.code}</code>`);
   }
-  return send(env, userId, "<b>اشتراک‌های تو</b>\n\n" + lines.join("\n\n"), { reply_markup: plansKeyboard() });
+  return send(env, userId, "<b>اشتراک‌های تو</b>\n\n" + lines.join("\n\n"), { reply_markup: await plansKeyboard(env) });
 }
 
 // ---------- Group commands ----------
@@ -351,30 +352,27 @@ async function onGroupMessage(msg, env) {
   await env.DB.put("config:owner", String(msg.from.id));
   return send(env, msg.chat.id,
     "✅ این گروه برای <b>رسیدها</b> و <b>اطلاع‌رسانی کاربران جدید</b> تنظیم شد.\n" +
-    "رسیدها با دکمه‌ی تأیید / رد اینجا میان.");
+    "رسیدها با دکمه‌ی تأیید / رد اینجا میان.\n" +
+    "پنل مدیریت: در چت خصوصی ربات /start بزن.");
 }
 
 // ---------- Reminders ----------
 
 async function sendReminders(env) {
   const now = Date.now() / 1000;
-  let cursor;
-  do {
-    const page = await env.DB.list({ prefix: "lic:", cursor });
-    for (const k of page.keys) {
-      const lic = await getJSON(env, k.name);
-      if (!lic) continue;
-      const daysLeft = Math.ceil((lic.expires - now) / 86400);
-      for (const mark of [3, 1]) {
-        if (daysLeft === mark && !lic.reminded.includes(mark)) {
-          await send(env, lic.userId,
-            `⏰ اشتراک پل برای دستگاه <code>${lic.device}</code> ${fa(mark)} روز دیگه تموم می‌شه.\nبرای تمدید یک پلن انتخاب کن:`,
-            { reply_markup: plansKeyboard() });
-          lic.reminded.push(mark);
-          await putJSON(env, k.name, lic);
-        }
+  const keys = await listAll(env, "lic:");
+  for (const k of keys) {
+    const lic = await getJSON(env, k);
+    if (!lic || !/^\d+$/.test(String(lic.userId))) continue;
+    const daysLeft = Math.ceil((lic.expires - now) / 86400);
+    for (const mark of [3, 1]) {
+      if (daysLeft === mark && !lic.reminded.includes(mark)) {
+        await send(env, lic.userId,
+          `⏰ اشتراک پل برای دستگاه <code>${lic.device}</code> ${fa(mark)} روز دیگه تموم می‌شه.\nبرای تمدید یک پلن انتخاب کن:`,
+          { reply_markup: await plansKeyboard(env) });
+        lic.reminded.push(mark);
+        await putJSON(env, k, lic);
       }
     }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
+  }
 }

@@ -159,6 +159,7 @@ private fun Home() {
     val prefs = remember { Prefs(context) }
     val status by BridgeState.status.collectAsStateWithLifecycle()
     var code by remember { mutableStateOf(prefs.pairingCode) }
+    LaunchedEffect(code) { BridgeState.update { it.copy(shownCode = code) } }
     var granted by remember { mutableIntStateOf(countGranted(context)) }
     var batteryOk by remember { mutableStateOf(ignoresBattery(context)) }
 

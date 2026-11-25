@@ -141,7 +141,8 @@ final class BridgeManager: NSObject, ObservableObject {
             pendingCode = nil
             state = .connected
         case "denied":
-            deniedCode = obj["got"] as? String
+            deniedCode = [obj["got"] as? String, obj["reason"] as? String, obj["keys"] as? String]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
             state = .denied
             pendingCode = nil
             if let p = peripheral { central.cancelPeripheralConnection(p) }

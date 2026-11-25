@@ -40,12 +40,14 @@ data class BridgeStatus(
     val iphoneName: String? = null,
     /** Code from the last refused pairing attempt, shown in the app to help the user. */
     val lastRejected: String? = null,
+    /** Pairing code currently on screen. */
+    val shownCode: String? = null,
 )
 
 object BridgeState {
     private val _status = MutableStateFlow(BridgeStatus())
     val status: StateFlow<BridgeStatus> = _status
-    internal fun update(f: (BridgeStatus) -> BridgeStatus) { _status.value = f(_status.value) }
+    fun update(f: (BridgeStatus) -> BridgeStatus) { _status.value = f(_status.value) }
 }
 
 /**
@@ -142,19 +144,23 @@ class BridgeService : Service(), BleServer.Listener {
         val type = msg.optString("t")
 
         if (type == "hello") {
-            val id = msg.optString("id")
+            // Fall back to the Bluetooth address if the iPhone sent no id.
+            val id = msg.optString("id").ifEmpty { "addr:" + device.address }
             val code = digitsOnly(msg.optString("code"))
-            val expected = prefs.pairingCode
+            // The code shown on screen is always accepted, even if it differs from the stored one.
+            val accepted = setOfNotNull(digitsOnly(prefs.pairingCode), BridgeState.status.value.shownCode?.let(::digitsOnly))
             val reason = when {
-                id.isEmpty() -> "no_id"
                 id in prefs.trustedPhones -> null
                 code.isEmpty() -> "no_code"
-                code != expected -> "bad_code"
+                code !in accepted -> "bad_code"
                 else -> null
             }
             if (reason != null) {
-                BridgeState.update { it.copy(lastRejected = if (code.isEmpty()) "(بدون کد)" else code) }
-                ble.send(JSONObject().put("t", "denied").put("reason", reason).put("got", code).toString())
+                BridgeState.update { it.copy(lastRejected = (if (code.isEmpty()) "(بدون کد)" else code) + " · " + reason) }
+                ble.send(
+                    JSONObject().put("t", "denied").put("reason", reason).put("got", code)
+                        .put("keys", msg.names()?.join(",") ?: "").toString()
+                )
                 return
             }
             prefs.trust(id)

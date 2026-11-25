@@ -55,12 +55,35 @@ final class BridgeManager: NSObject, ObservableObject {
         return v
     }
 
+    private var lastReceived = Date()
+    private var keepAlive: Timer?
+
     override init() {
         super.init()
         central = CBCentralManager(
             delegate: self, queue: .main,
             options: [CBCentralManagerOptionRestoreIdentifierKey: "pol.central"]
         )
+        // Ping every 20 s; if the phone has said nothing for 60 s, the link is dead even if
+        // iOS still reports it connected, so drop it and reconnect.
+        keepAlive = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            self?.checkLink()
+        }
+    }
+
+    private func checkLink() {
+        guard state == .connected, let p = peripheral else { return }
+        if Date().timeIntervalSince(lastReceived) > 60 {
+            central.cancelPeripheralConnection(p)
+            return
+        }
+        send(["t": "ping"])
+    }
+
+    /// Call when the app comes to the foreground.
+    func refreshLink() {
+        if state == .connected { send(["t": "ping"]) }
+        else if let p = peripheral, p.state != .connected, isPaired { connect(p) }
     }
 
     // MARK: Pairing
@@ -137,6 +160,7 @@ final class BridgeManager: NSObject, ObservableObject {
               let type = obj["t"] as? String else { return }
         switch type {
         case "welcome":
+            lastReceived = Date()
             if let p = peripheral { pairedID = p.identifier }
             pendingCode = nil
             state = .connected
@@ -223,7 +247,9 @@ extension BridgeManager: CBPeripheralDelegate {
     }
 
     func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic, error: Error?) {
-        guard c.uuid == Wire.tx, let value = c.value, let message = reassembler.push(value) else { return }
+        guard c.uuid == Wire.tx, let value = c.value else { return }
+        lastReceived = Date()
+        guard let message = reassembler.push(value) else { return }
         handle(message)
     }
 

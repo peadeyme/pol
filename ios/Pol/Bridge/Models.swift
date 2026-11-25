@@ -16,6 +16,8 @@ struct SmsMessage: Codable, Hashable, Identifiable {
     var sim: Int
     /// Local-only: false while waiting for the Android phone to confirm.
     var pending: Bool? = nil
+    /// Local-only: the Android phone reported the SMS was not sent.
+    var failed: Bool? = nil
 
     var incoming: Bool { dir == "in" }
     var date: Date { Date(timeIntervalSince1970: ts / 1000) }

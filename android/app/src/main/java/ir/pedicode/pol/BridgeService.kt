@@ -42,6 +42,8 @@ data class BridgeStatus(
     val lastRejected: String? = null,
     /** Pairing code currently on screen. */
     val shownCode: String? = null,
+    /** Last thing the bridge did, for troubleshooting. */
+    val lastEvent: String? = null,
 )
 
 object BridgeState {
@@ -75,7 +77,10 @@ class BridgeService : Service(), BleServer.Listener {
         super.onCreate()
         prefs = Prefs(this)
         data = PhoneData(this)
-        control = CallControl(this, data)
+        control = CallControl(this, data) { ref, ok, error ->
+            ble.send(JSONObject().put("t", "sent").put("ref", ref).put("ok", ok).put("error", error ?: JSONObject.NULL).toString())
+            event(if (ok) "پیامک ارسال شد" else "پیامک ارسال نشد ($error)")
+        }
         ble = BleServer(this, this)
         startAsForeground()
 
@@ -101,6 +106,7 @@ class BridgeService : Service(), BleServer.Listener {
         runCatching { unregisterReceiver(phoneReceiver) }
         runCatching { unregisterReceiver(btReceiver) }
         ble.stop()
+        control.close()
         BridgeState.update { BridgeStatus(shownCode = it.shownCode, lastRejected = it.lastRejected) }
         super.onDestroy()
     }
@@ -180,15 +186,33 @@ class BridgeService : Service(), BleServer.Listener {
 
         when (type) {
             "send_sms" -> {
-                val ok = control.sendSms(msg.optString("to"), msg.optString("body"), msg.optInt("sim", 1))
-                ble.send(JSONObject().put("t", "sent").put("ref", msg.optString("ref")).put("ok", ok).toString())
+                val ref = msg.optString("ref")
+                val error = control.sendSms(ref, msg.optString("to"), msg.optString("body"), msg.optInt("sim", 1))
+                if (error != null) {
+                    ble.send(JSONObject().put("t", "sent").put("ref", ref).put("ok", false).put("error", error).toString())
+                    event("پیامک ارسال نشد: $error")
+                } else {
+                    event("در حال ارسال پیامک به ${msg.optString("to")}")
+                }
             }
-            "call_answer" -> control.answer()
-            "call_end" -> control.end()
-            "dial" -> control.dial(msg.optString("to"), msg.optInt("sim", 1))
+            "call_answer" -> event("جواب دادن تماس" + (control.answer()?.let { " — خطا: $it" } ?: ""))
+            "call_end" -> event("قطع تماس" + (control.end()?.let { " — خطا: $it" } ?: ""))
+            "dial" -> {
+                val error = control.dial(msg.optString("to"), msg.optInt("sim", 1))
+                if (error != null) {
+                    ble.send(JSONObject().put("t", "call").put("id", "dial").put("state", "ended").put("error", error).toString())
+                    event("شماره‌گیری نشد: $error")
+                } else {
+                    event("شماره‌گیری ${msg.optString("to")}")
+                }
+            }
             "sync" -> sendFullSync()
             "ping" -> sendStatus()
         }
+    }
+
+    private fun event(text: String) {
+        BridgeState.update { it.copy(lastEvent = text) }
     }
 
     /** The name the user gave the phone (e.g. "POCO C71"), not the model code. */
@@ -276,45 +300,68 @@ class BridgeService : Service(), BleServer.Listener {
             )
             if (License.isActive(this@BridgeService, prefs)) {
                 ble.send(JSONObject().put("t", "sms").put("item", sms).toString())
+                event("پیامک از $addr → آیفون")
             }
         }
+    }
+
+    private var ringSent = false
+    private val ringFallback = Runnable {
+        // Some phones never include the number; still ring the iPhone.
+        if (lastCallState == TelephonyManager.EXTRA_STATE_RINGING && !ringSent) sendRinging(null)
+    }
+
+    private fun sendCall(state: String, addr: String? = null) {
+        val out = JSONObject().put("t", "call").put("id", callId).put("state", state)
+        if (addr != null) out.put("addr", addr).put("name", data.nameFor(addr) ?: JSONObject.NULL)
+        if (License.isActive(this, prefs)) {
+            ble.send(out.toString())
+            event("تماس $state ${addr ?: ""} → آیفون")
+        }
+    }
+
+    private fun sendRinging(number: String?) {
+        ringSent = true
+        main.removeCallbacks(ringFallback)
+        sendCall("ringing", number ?: "ناشناس")
     }
 
     private val phoneReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
-            // Without READ_CALL_LOG the number is missing; the broadcast also fires twice.
+            // The broadcast fires twice; only the copy seen with READ_CALL_LOG carries the number.
             @Suppress("DEPRECATION")
             val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
-            if (state == lastCallState && number == null) return
 
-            val out = JSONObject().put("t", "call")
             when (state) {
                 TelephonyManager.EXTRA_STATE_RINGING -> {
-                    if (number == null) return
-                    if (lastCallState == TelephonyManager.EXTRA_STATE_RINGING && callId != null) return
-                    callId = UUID.randomUUID().toString()
-                    out.put("state", "ringing").put("addr", number).put("name", data.nameFor(number) ?: JSONObject.NULL)
+                    if (lastCallState != TelephonyManager.EXTRA_STATE_RINGING) {
+                        callId = UUID.randomUUID().toString()
+                        ringSent = false
+                    }
+                    lastCallState = state
+                    if (ringSent) return
+                    if (number != null) sendRinging(number) else main.postDelayed(ringFallback, 800)
                 }
                 TelephonyManager.EXTRA_STATE_OFFHOOK -> {
+                    if (lastCallState == state) return
                     if (callId == null) callId = UUID.randomUUID().toString()
-                    out.put("state", "active")
-                    if (number != null) out.put("addr", number)
+                    lastCallState = state
+                    sendCall("active", number)
                 }
                 TelephonyManager.EXTRA_STATE_IDLE -> {
-                    if (callId == null) { lastCallState = state; return }
-                    out.put("state", "ended")
+                    main.removeCallbacks(ringFallback)
+                    val had = callId != null && lastCallState != state
+                    lastCallState = state
+                    if (!had) return
+                    sendCall("ended")
+                    callId = null
+                    ringSent = false
+                    // Refresh the call log shortly after the call is written.
+                    main.postDelayed({
+                        Thread { runCatching { ble.send(JSONObject().put("t", "calls").put("items", data.callLog()).toString()) } }.start()
+                    }, 1500)
                 }
-            }
-            lastCallState = state
-            out.put("id", callId)
-            if (License.isActive(this@BridgeService, prefs)) ble.send(out.toString())
-            if (state == TelephonyManager.EXTRA_STATE_IDLE) {
-                callId = null
-                // Refresh the call log shortly after the call is written.
-                main.postDelayed({
-                    Thread { runCatching { ble.send(JSONObject().put("t", "calls").put("items", data.callLog()).toString()) } }.start()
-                }, 1500)
             }
         }
     }

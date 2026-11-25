@@ -47,6 +47,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +71,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ir.pedicode.pol.BridgeService
 import ir.pedicode.pol.BridgeState
+import ir.pedicode.pol.ble.BridgeStats
 import ir.pedicode.pol.data.License
 import ir.pedicode.pol.data.Prefs
 import kotlinx.coroutines.delay
@@ -235,6 +237,22 @@ private fun Home() {
             }
         }
 
+        // Live diagnostics (helps when something doesn't reach the iPhone)
+        if (status.running) {
+            var tick by remember { mutableIntStateOf(0) }
+            LaunchedEffect(Unit) { while (true) { delay(1000); tick++ } }
+            Section {
+                Text("وضعیت لحظه‌ای", fontSize = 14.sp, color = Muted)
+                key(tick) {
+                    Text(
+                        "بسته‌های ارسالی: ${BridgeStats.tx} · دریافتی: ${BridgeStats.rx}",
+                        fontSize = 13.sp, color = Text2,
+                    )
+                }
+                Text(status.lastEvent ?: "هنوز رویدادی نیست", fontSize = 13.sp, color = Color.White)
+            }
+        }
+
         // Pairing code
         Section {
             Text("کد جفت‌سازی", fontSize = 14.sp, color = Muted)
@@ -279,6 +297,20 @@ private fun Home() {
                 context.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
                 )
+            }
+            if (isXiaomi()) {
+                Step(
+                    done = false,
+                    title = "شیائومی/پوکو: اجازه‌های اضافه",
+                    hint = "«Display pop-up windows while running in background» و «Start in background» را روشن کنید؛ بدون این، شماره‌گیری از آیفون کار نمی‌کند",
+                    action = "باز کردن",
+                ) { openXiaomiPermissions(context) }
+                Step(
+                    done = false,
+                    title = "شیائومی/پوکو: Autostart",
+                    hint = "پل را در لیست Autostart روشن کنید تا بعد از ری‌استارت و در پس‌زمینه بسته نشود",
+                    action = "باز کردن",
+                ) { openXiaomiAutostart(context) }
             }
             Step(
                 done = batteryOk,
@@ -397,6 +429,31 @@ private fun Step(done: Boolean, title: String, hint: String, action: String, onC
             OutlinedButton(onClick = onClick, shape = RoundedCornerShape(10.dp)) { Text(action, color = Accent, fontSize = 13.sp) }
         }
     }
+}
+
+private fun isXiaomi(): Boolean =
+    Build.MANUFACTURER.lowercase().let { it.contains("xiaomi") || it.contains("redmi") || it.contains("poco") }
+
+private fun openXiaomiPermissions(context: android.content.Context) {
+    val pkg = context.packageName
+    val tries = listOf(
+        Intent("miui.intent.action.APP_PERM_EDITOR")
+            .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+            .putExtra("extra_pkgname", pkg),
+        Intent("miui.intent.action.APP_PERM_EDITOR")
+            .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.AppPermissionsEditorActivity")
+            .putExtra("extra_pkgname", pkg),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg")),
+    )
+    for (i in tries) if (runCatching { context.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+}
+
+private fun openXiaomiAutostart(context: android.content.Context) {
+    val tries = listOf(
+        Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
+    )
+    for (i in tries) if (runCatching { context.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
 }
 
 private fun countGranted(context: android.content.Context): Int =

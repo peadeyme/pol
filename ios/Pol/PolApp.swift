@@ -11,6 +11,8 @@ struct PolApp: App {
         _store = StateObject(wrappedValue: Store(bridge: bridge))
     }
 
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -20,6 +22,9 @@ struct PolApp: App {
                 .environment(\.locale, Locale(identifier: "fa_IR"))
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
+                .onChange(of: scenePhase) {
+                    if scenePhase == .active { bridge.refreshLink() }
+                }
                 .onAppear {
                     Notifier.requestPermission()
                     Notifier.scheduleRenewalReminders(expiry: Provisioning.expiry)

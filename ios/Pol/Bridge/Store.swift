@@ -111,7 +111,7 @@ final class Store: ObservableObject {
             rebuildNames()
         case "sms_sync":
             let synced = decode([SmsMessage].self, obj["items"]) ?? []
-            let pending = messages.filter { $0.pending == true }
+            let pending = messages.filter { $0.pending == true || $0.failed == true }
             messages = synced + pending
             if readUpTo.isEmpty {
                 // First sync: treat history as read.
@@ -124,7 +124,9 @@ final class Store: ObservableObject {
             }
         case "sent":
             if let ref = obj["ref"] as? String, let i = messages.firstIndex(where: { $0.id == ref }) {
-                messages[i].pending = (obj["ok"] as? Bool ?? false) ? nil : true
+                let ok = obj["ok"] as? Bool ?? false
+                messages[i].pending = nil
+                messages[i].failed = ok ? nil : true
             }
         case "license":
             break

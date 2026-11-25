@@ -91,6 +91,10 @@ struct Bubble: View {
                     .font(.system(size: 15))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 4) {
+                    if message.failed == true {
+                        Image(systemName: "exclamationmark.circle.fill").font(.system(size: 11))
+                        Text("ارسال نشد").font(.system(size: 11, weight: .bold))
+                    }
                     if message.pending == true { Image(systemName: "clock").font(.system(size: 10)) }
                     Text(Fa.num(Fa.clock(message.date))).font(.system(size: 11))
                 }
@@ -100,7 +104,7 @@ struct Bubble: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .foregroundStyle(message.incoming ? Color.white : Theme.onAccent)
-            .background(message.incoming ? Theme.field : Theme.accent, in: RoundedRectangle(cornerRadius: 18))
+            .background(message.incoming ? Theme.field : (message.failed == true ? Theme.danger : Theme.accent), in: RoundedRectangle(cornerRadius: 18))
             .frame(maxWidth: 290, alignment: message.incoming ? .leading : .trailing)
             if message.incoming { Spacer(minLength: 60) }
         }

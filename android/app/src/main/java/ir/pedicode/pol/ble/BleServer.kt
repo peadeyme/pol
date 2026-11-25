@@ -104,12 +104,25 @@ class BleServer(
         }
     }
 
+    /** Some Bluetooth stacks skip onNotificationSent now and then; without this the queue would stall forever. */
+    private var sendSeq = 0
+    private val watchdog = Runnable {
+        if (sending) {
+            sending = false
+            pump()
+        }
+    }
+
     private fun pump() {
         if (sending) return
         val device = central ?: return
         val packet = outbox.pollFirst() ?: return
         val s = server ?: return
         sending = true
+        sendSeq++
+        main.removeCallbacks(watchdog)
+        main.postDelayed(watchdog, 250)
+        BridgeStats.tx++
         val ok = try {
             if (Build.VERSION.SDK_INT >= 33) {
                 s.notifyCharacteristicChanged(device, tx, false, packet) == BluetoothGatt.GATT_SUCCESS
@@ -137,6 +150,7 @@ class BleServer(
     private val prepared = java.io.ByteArrayOutputStream()
 
     private fun deliver(device: BluetoothDevice, packet: ByteArray) {
+        BridgeStats.rx++
         main.post {
             val message = reassembler.push(packet) ?: return@post
             listener.onMessage(device, message)
@@ -200,6 +214,7 @@ class BleServer(
 
         override fun onNotificationSent(device: BluetoothDevice, status: Int) {
             main.post {
+                main.removeCallbacks(watchdog)
                 sending = false
                 pump()
             }
@@ -271,4 +286,10 @@ class BleServer(
     companion object {
         private const val TAG = "PolBle"
     }
+}
+
+/** Packet counters shown on the Android screen for troubleshooting. */
+object BridgeStats {
+    @Volatile var tx = 0
+    @Volatile var rx = 0
 }

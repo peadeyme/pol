@@ -131,6 +131,15 @@ jobs:
           if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "v$VERSION" Pol.apk Pol.ipa --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "v$VERSION" Pol.apk Pol.ipa --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" --title "پل $VERSION" --notes-file notes.md --latest
+            # Create the tag with git first; the releases API alone has been returning 500s.
+            if ! git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+              git tag "v$VERSION" "$GITHUB_SHA"
+              git push origin "v$VERSION"
+            fi
+            for i in 1 2 3 4 5; do
+              gh release create "v$VERSION" Pol.apk Pol.ipa --repo "$GITHUB_REPOSITORY" \
+                --verify-tag --title "Pol $VERSION" --notes-file notes.md --latest && exit 0
+              sleep 15
+            done
+            exit 1
           fi

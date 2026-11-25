@@ -51,6 +51,10 @@ class BleServer(
 
     val isConnected: Boolean get() = central != null && subscribed
 
+    /** False on phones whose Bluetooth chip cannot advertise (cannot act as a BLE peripheral). */
+    val supportsPeripheral: Boolean
+        get() = manager.adapter?.let { it.isMultipleAdvertisementSupported || it.bluetoothLeAdvertiser != null } ?: false
+
     fun start() {
         val adapter = manager.adapter ?: return
         if (!adapter.isEnabled) return

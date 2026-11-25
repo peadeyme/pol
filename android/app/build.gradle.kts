@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "ir.pedicode.pol"
-        minSdk = 31
+        minSdk = 29
         targetSdk = 34
         versionCode = (System.getenv("POL_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("POL_VERSION_NAME") ?: "0.1.0"

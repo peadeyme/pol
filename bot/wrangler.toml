@@ -1,0 +1,18 @@
+name = "pol-bot"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# Daily renewal reminders (08:17 UTC ≈ 11:47 Tehran)
+[triggers]
+crons = ["17 8 * * *"]
+
+# The deploy workflow fills in the id (creates the namespace on first deploy).
+[[kv_namespaces]]
+binding = "DB"
+id = "KV_ID"
+
+[vars]
+SUPPORT = "@mostalzem"
+
+# Secrets (set by the deploy workflow from GitHub secrets, never in this file):
+# BOT_TOKEN, LICENSE_KEY, WEBHOOK_SECRET, CARD_NUMBER, CARD_HOLDER

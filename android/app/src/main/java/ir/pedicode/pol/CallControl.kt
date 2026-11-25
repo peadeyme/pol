@@ -3,6 +3,7 @@ package ir.pedicode.pol
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.telecom.TelecomManager
 import android.telephony.SmsManager
@@ -15,7 +16,12 @@ class CallControl(private val context: Context, private val data: PhoneData) {
 
     fun sendSms(to: String, body: String, simSlot: Int): Boolean = runCatching {
         val subId = data.subIdForSlot(simSlot)
-        val sms = context.getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
+        val sms = if (Build.VERSION.SDK_INT >= 31) {
+            context.getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
+        } else {
+            @Suppress("DEPRECATION")
+            SmsManager.getSmsManagerForSubscriptionId(subId)
+        }
         val parts = sms.divideMessage(body)
         if (parts.size > 1) sms.sendMultipartTextMessage(to, null, parts, null, null)
         else sms.sendTextMessage(to, null, body, null, null)

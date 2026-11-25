@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -78,20 +79,23 @@ private val Muted = Color(0xFF8A93A0)
 private val Text2 = Color(0xFFA3ACB8)
 private val Warn = Color(0xFFF5B547)
 
-private val PERMISSIONS = arrayOf(
-    Manifest.permission.BLUETOOTH_ADVERTISE,
-    Manifest.permission.BLUETOOTH_CONNECT,
-    Manifest.permission.RECEIVE_SMS,
-    Manifest.permission.READ_SMS,
-    Manifest.permission.SEND_SMS,
-    Manifest.permission.READ_PHONE_STATE,
-    Manifest.permission.READ_PHONE_NUMBERS,
-    Manifest.permission.READ_CALL_LOG,
-    Manifest.permission.CALL_PHONE,
-    Manifest.permission.ANSWER_PHONE_CALLS,
-    Manifest.permission.READ_CONTACTS,
-    Manifest.permission.POST_NOTIFICATIONS,
-)
+/** Runtime permissions this Android version actually has. */
+private val PERMISSIONS: Array<String> = buildList {
+    if (Build.VERSION.SDK_INT >= 31) {
+        add(Manifest.permission.BLUETOOTH_ADVERTISE)
+        add(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+    add(Manifest.permission.RECEIVE_SMS)
+    add(Manifest.permission.READ_SMS)
+    add(Manifest.permission.SEND_SMS)
+    add(Manifest.permission.READ_PHONE_STATE)
+    add(Manifest.permission.READ_PHONE_NUMBERS)
+    add(Manifest.permission.READ_CALL_LOG)
+    add(Manifest.permission.CALL_PHONE)
+    add(Manifest.permission.ANSWER_PHONE_CALLS)
+    add(Manifest.permission.READ_CONTACTS)
+    if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+}.toTypedArray()
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -189,6 +193,8 @@ private fun Home() {
                 Column(Modifier.weight(1f)) {
                     Text(
                         when {
+                            status.unsupported -> "بلوتوث این گوشی از پل پشتیبانی نمی‌کند"
+                            status.bluetoothOff -> "بلوتوث خاموش است"
                             status.connected -> "متصل به ${status.iphoneName ?: "آیفون"}"
                             status.running -> "منتظر اتصال آیفون…"
                             else -> "خاموش"
@@ -236,7 +242,7 @@ private fun Home() {
                 hint = "پیامک، تماس، مخاطبین، بلوتوث و اعلان",
                 action = "دادن مجوز",
             ) { permissionLauncher.launch(PERMISSIONS) }
-            Step(
+            if (Build.VERSION.SDK_INT >= 33) Step(
                 done = false,
                 title = "۲. اجازه‌ی تنظیمات محدود",
                 hint = "اگر مجوز پیامک خاکستری بود: اطلاعات برنامه ← منوی ⋮ ← Allow restricted settings",

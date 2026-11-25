@@ -34,6 +34,8 @@ import java.util.UUID
 /** What the UI shows about the bridge. */
 data class BridgeStatus(
     val running: Boolean = false,
+    val unsupported: Boolean = false,
+    val bluetoothOff: Boolean = false,
     val connected: Boolean = false,
     val iphoneName: String? = null,
 )
@@ -79,8 +81,11 @@ class BridgeService : Service(), BleServer.Listener {
         ContextCompat.registerReceiver(this, phoneReceiver, IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED), flag)
         ContextCompat.registerReceiver(this, btReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), flag)
 
+        val adapterOn = getSystemService(android.bluetooth.BluetoothManager::class.java).adapter?.isEnabled == true
         ble.start()
-        BridgeState.update { it.copy(running = true) }
+        BridgeState.update {
+            it.copy(running = true, bluetoothOff = !adapterOn, unsupported = adapterOn && !ble.supportsPeripheral)
+        }
         main.postDelayed(statusTick, STATUS_INTERVAL)
     }
 
@@ -111,11 +116,8 @@ class BridgeService : Service(), BleServer.Listener {
             .setContentIntent(open)
             .setOngoing(true)
             .build()
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(NOTIFICATION_ID, n)
-        }
+        // Typed foreground services exist since Android 10.
+        startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
     }
 
     // ---- BLE events ----
@@ -224,7 +226,11 @@ class BridgeService : Service(), BleServer.Listener {
             if (parts.isEmpty()) return
             val addr = parts[0].displayOriginatingAddress ?: return
             val body = parts.joinToString("") { it.displayMessageBody ?: "" }
-            val subId = intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, -1)
+            val subId = if (Build.VERSION.SDK_INT >= 30) {
+                intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, -1)
+            } else {
+                intent.getIntExtra("subscription", -1)
+            }
             val sms = data.sms(
                 id = "n" + System.currentTimeMillis(),
                 addr = addr,
@@ -282,10 +288,13 @@ class BridgeService : Service(), BleServer.Listener {
     private val btReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {
-                BluetoothAdapter.STATE_ON -> ble.start()
+                BluetoothAdapter.STATE_ON -> {
+                    ble.start()
+                    BridgeState.update { it.copy(bluetoothOff = false, unsupported = !ble.supportsPeripheral) }
+                }
                 BluetoothAdapter.STATE_TURNING_OFF -> {
                     ble.stop()
-                    BridgeState.update { it.copy(connected = false, iphoneName = null) }
+                    BridgeState.update { it.copy(connected = false, iphoneName = null, bluetoothOff = true) }
                 }
             }
         }

@@ -18,3 +18,5 @@ DerivedData/
 .idea/
 tools/__pycache__/
 *.pem
+node_modules/
+.wrangler/

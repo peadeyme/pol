@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a release with the version in the VERSION file"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -31,7 +36,7 @@ jobs:
 
       - name: Version
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV; else echo "VERSION=0.1.0" >> $GITHUB_ENV; fi
+          echo "VERSION=$(tr -d ' \n' < VERSION)" >> $GITHUB_ENV
 
       - name: Decode release keystore (optional)
         if: env.KEYSTORE_B64 != ''
@@ -63,7 +68,7 @@ jobs:
 
       - name: Version
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV; else echo "VERSION=0.1.0" >> $GITHUB_ENV; fi
+          echo "VERSION=$(tr -d ' \n' < VERSION)" >> $GITHUB_ENV
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -99,17 +104,32 @@ jobs:
           name: Pol-ios
           path: Pol.ipa
 
+  # Publishes when the commit message contains [release], or from "Run workflow" with release ticked.
   release:
     name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (contains(github.event.head_commit.message, '[release]') || inputs.release)
     needs: [android, ios]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        run: echo "VERSION=$(tr -d ' \n' < VERSION)" >> $GITHUB_ENV
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
+          name: پل ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            **Pol.apk** — نصب روی گوشی اندروید (Android 10 به بالا)
+            **Pol.ipa** — نصب روی آیفون با SideStore (iOS 17 به بالا)
+
+            خرید و تمدید اشتراک: https://t.me/polantenbot
           files: |
             Pol.apk
             Pol.ipa

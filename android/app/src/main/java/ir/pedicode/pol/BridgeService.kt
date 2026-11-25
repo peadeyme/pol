@@ -101,7 +101,7 @@ class BridgeService : Service(), BleServer.Listener {
         runCatching { unregisterReceiver(phoneReceiver) }
         runCatching { unregisterReceiver(btReceiver) }
         ble.stop()
-        BridgeState.update { BridgeStatus() }
+        BridgeState.update { BridgeStatus(shownCode = it.shownCode, lastRejected = it.lastRejected) }
         super.onDestroy()
     }
 
@@ -156,7 +156,9 @@ class BridgeService : Service(), BleServer.Listener {
                 else -> null
             }
             if (reason != null) {
-                BridgeState.update { it.copy(lastRejected = (if (code.isEmpty()) "(بدون کد)" else code) + " · " + reason) }
+                // Shown only on the Android screen (the owner's phone), to diagnose mismatches.
+                val detail = "دریافتی ${code.ifEmpty { "-" }} · انتظار ${accepted.joinToString("/")} · $reason"
+                BridgeState.update { it.copy(lastRejected = detail) }
                 ble.send(
                     JSONObject().put("t", "denied").put("reason", reason).put("got", code)
                         .put("keys", msg.names()?.join(",") ?: "").toString()

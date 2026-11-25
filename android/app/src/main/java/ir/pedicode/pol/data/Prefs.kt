@@ -7,12 +7,17 @@ import java.security.SecureRandom
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("pol", Context.MODE_PRIVATE)
 
+    /** One pairing code for the whole app (screen and service read the same value). */
     val pairingCode: String
-        get() = sp.getString(KEY_CODE, null) ?: newPairingCode()
+        get() = synchronized(LOCK) {
+            cached ?: (sp.getString(KEY_CODE, null) ?: generate()).also { cached = it }
+        }
 
-    fun newPairingCode(): String {
+    fun newPairingCode(): String = synchronized(LOCK) { generate().also { cached = it } }
+
+    private fun generate(): String {
         val code = (SecureRandom().nextInt(900_000) + 100_000).toString()
-        sp.edit().putString(KEY_CODE, code).apply()
+        sp.edit().putString(KEY_CODE, code).commit()
         return code
     }
 
@@ -47,6 +52,8 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString(KEY_LICENSE, v).apply()
 
     companion object {
+        private val LOCK = Any()
+        @Volatile private var cached: String? = null
         private const val KEY_LICENSE = "license"
         private const val KEY_CODE = "pairing_code"
         private const val KEY_TRUSTED = "trusted"

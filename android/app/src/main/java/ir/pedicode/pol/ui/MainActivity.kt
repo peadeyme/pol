@@ -245,7 +245,7 @@ private fun Home() {
             )
             status.lastRejected?.let {
                 Text(
-                    "یک آیفون با کد «$it» تلاش کرد و رد شد. کد بالا را دقیق وارد کنید.",
+                    "تلاش ناموفق آیفون: $it",
                     fontSize = 13.sp, color = Color(0xFFF87171), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
                 )
             }

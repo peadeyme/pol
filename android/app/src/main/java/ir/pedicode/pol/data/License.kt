@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * Plans, trial and offline license check.
  *
  * A license code is `base64url(payload).base64url(signature)`, where the payload is
- * {"d": device code, "p": "m"|"y", "e": expiry (unix seconds)} signed with ECDSA P-256.
+ * {"d": device code, "p": "m"|"s"|"y", "e": expiry (unix seconds)} signed with ECDSA P-256.
  * Only the public key lives here, so the code stays safe in a public repository:
  * nobody can make a valid license without the private key (kept by the seller,
  * used by tools/license.py).
@@ -31,13 +31,14 @@ object License {
 
     val plans = listOf(
         Plan("ماهانه", "۳۰۰٬۰۰۰ تومان", "۳۱ روز"),
-        Plan("سالانه", "۲٬۰۰۰٬۰۰۰ تومان", "۳۶۶ روز — حدود ۴۴٪ ارزان‌تر"),
+        Plan("شش‌ماهه", "۱٬۵۰۰٬۰۰۰ تومان", "۱۸۳ روز — ۱۷٪ ارزان‌تر"),
+        Plan("سالانه", "۲٬۵۰۰٬۰۰۰ تومان", "۳۶۶ روز — ۳۱٪ ارزان‌تر"),
     )
 
     data class Info(val plan: String, val expiresAt: Long) {
         val daysLeft: Int
             get() = TimeUnit.SECONDS.toDays(expiresAt - System.currentTimeMillis() / 1000).toInt().coerceAtLeast(0)
-        val planName: String get() = if (plan == "y") "سالانه" else "ماهانه"
+        val planName: String get() = when (plan) { "y" -> "سالانه"; "s" -> "شش‌ماهه"; else -> "ماهانه" }
     }
 
     /** Short code the customer sends to the seller, e.g. "7F3A2-9C41B". Stable for this app on this phone. */

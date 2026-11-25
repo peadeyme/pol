@@ -33,7 +33,7 @@ Android ignores every other message until `hello` succeeds on that connection.
 | `call` | `id`, `state: ringing/active/ended`, `addr`, `name` |
 | `denied` / `license` | pairing refused / subscription inactive |
 
-`license` = `{active, plan: trial/m/y, daysLeft}`. While inactive, Android sends no SMS/call data.
+`license` = `{active, plan: trial/m/s/y, daysLeft}`. While inactive, Android sends no SMS/call data.
 
 `sms` = `{id, addr, name, body, ts (ms), dir: in/out, sim}`
 

@@ -60,6 +60,7 @@ final class Store: ObservableObject {
     var licenseLabel: String {
         switch licensePlan {
         case "y": return "سالانه · \(Fa.num(licenseDays)) روز مانده"
+        case "s": return "شش‌ماهه · \(Fa.num(licenseDays)) روز مانده"
         case "m": return "ماهانه · \(Fa.num(licenseDays)) روز مانده"
         default: return licenseActive ? "آزمایشی · \(Fa.num(licenseDays)) روز مانده" : "غیرفعال"
         }

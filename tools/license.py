@@ -3,6 +3,7 @@
 Issue Pol license codes.
 
   python3 tools/license.py issue 7F3A2-9C41B monthly
+  python3 tools/license.py issue 7F3A2-9C41B 6month
   python3 tools/license.py issue 7F3A2-9C41B yearly
   python3 tools/license.py issue 7F3A2-9C41B monthly --days 10      # custom length
 
@@ -21,7 +22,7 @@ import time
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-PLANS = {"monthly": ("m", 31), "yearly": ("y", 366)}
+PLANS = {"monthly": ("m", 31), "6month": ("s", 183), "yearly": ("y", 366)}
 DEFAULT_KEY = os.path.expanduser("~/pol-license/license_private_key.pem")
 
 
